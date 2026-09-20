@@ -54,10 +54,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: teledown-${{ matrix.os }}-py${{ matrix.python-version }}
-          # dist/.[!.]* 用于匹配以点开头的配置文件（如 .env.example）
+          # .env.example 是隐藏文件，glob 的 * 默认不会匹配点开头文件，
+          # 因此用显式路径列出来
           path: |
             dist/*
-            dist/.[!.]*
+            dist/.env.example
           if-no-files-found: error
 
   # 推送 v* 标签时，等 Linux/Windows 构建全部成功后自动创建 Release 并挂上产物
