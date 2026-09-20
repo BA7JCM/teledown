@@ -1,5 +1,5 @@
 import os
-import sys
+import traceback
 from asyncio import CancelledError
 from datetime import datetime
 
@@ -7,11 +7,18 @@ from telethon import TelegramClient
 from telethon.errors import FileReferenceExpiredError
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, DocumentAttributeSticker
 
-from tools.tool import get_file_name, get_history_message, get_chat_id, match_wildcard, parse_user_ids
+from tools.tool import (get_file_name, get_history_message, get_chat_id, match_wildcard,
+                        parse_user_ids, UserAbort)
 from tools.tqdm import TqdmUpTo
 
 
 # TODO 或许能加快下载速度的方法（https://gist.github.com/painor/7e74de80ae0c819d3e9abcf9989a8dd6）
+
+
+def _remove_partial(download_path: str) -> None:
+    """删除未完成的临时文件，避免残留 .downloading 碎片。"""
+    if os.path.exists(download_path):
+        os.remove(download_path)
 
 
 def file_exist(file_path: str, file_size: int) -> tuple[bool, str]:
@@ -61,28 +68,39 @@ async def download_file(client: TelegramClient, channel_title, channel_id, messa
             return
         except CancelledError:
             print("取消下载")
-            if os.path.exists(download_path):
-                os.remove(download_path)
-            sys.exit()
+            _remove_partial(download_path)
+            raise UserAbort("下载已被取消")
         except FileReferenceExpiredError:
-            if attempt == 1:
-                print('重试失败，跳过该文件')
+            # 文档的 file_reference 过期已由 Telethon 内部自愈：_DirectDownloadIter._request()
+            # 会捕获 FilerefUpgradeNeededError / FileReferenceExpiredError，重新拉取消息后
+            # 从当前分片继续，无需在此重复处理。
+            # 照片走的是 InputPhotoFileLocation，不适用该自愈路径，才需要本地换一次新引用重试。
+            if attempt == 1 or not isinstance(message.media, MessageMediaPhoto):
+                print('文件引用已过期，跳过该文件')
+                _remove_partial(download_path)
                 return
-            print('下载超时，重试中')
-            channelData = await client.get_entity(int(channel_id))
-            newMessages = client.iter_messages(entity=channelData, ids=message.id)
-            async for newMessage in newMessages:
-                message = newMessage
-                break
+            print('文件引用已过期，重新获取消息后重试')
+            try:
+                channel_data = await client.get_entity(int(channel_id))
+                new_message = await client.get_messages(channel_data, ids=message.id)
+            except Exception:
+                print('重新获取消息失败，跳过该文件')
+                traceback.print_exc()
+                _remove_partial(download_path)
+                return
+            if new_message is None:
+                print('消息已不存在，跳过该文件')
+                _remove_partial(download_path)
+                return
+            message = new_message
         except KeyboardInterrupt:
             print("用户中断下载")
-            if os.path.exists(download_path):
-                os.remove(download_path)
+            _remove_partial(download_path)
             raise
         except Exception as e:
-            print("下载出错", e.__class__.__name__)
-            if os.path.exists(download_path):
-                os.remove(download_path)
+            print(f"下载出错 {e.__class__.__name__}: {e}")
+            traceback.print_exc()
+            _remove_partial(download_path)
             return
 
 

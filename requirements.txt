@@ -1,7 +1,8 @@
 demoji
 pandas
-telethon
+telethon==1.45.0
 cryptg
+python-socks
 tqdm
 urllib3>=1.26.18,<3
 python-dotenv

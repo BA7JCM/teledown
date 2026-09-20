@@ -1,6 +1,5 @@
 import os
 import re
-import sys
 import traceback
 from asyncio import CancelledError
 from io import BytesIO
@@ -8,7 +7,7 @@ from io import BytesIO
 from telethon import TelegramClient
 from telethon.tl.types import DocumentAttributeVideo, PeerChannel
 
-from tools.tool import get_all_files, get_thumb, str2join, get_filetype
+from tools.tool import get_all_files, get_thumb, str2join, get_filetype, UserAbort
 from tools.tqdm import TqdmUpTo
 
 
@@ -67,9 +66,10 @@ async def upload_file(client: TelegramClient, chat_id, path: str, del_after_uplo
                 result = await client.upload_file(file_path, progress_callback=bar.update_to)
             except CancelledError:
                 print("取消上传")
-                sys.exit()
+                raise UserAbort("上传已被取消")
             except Exception as e:
-                print(f'上传出错，错误原因 {e.__class__.__name__}，跳过 {filename}')
+                print(f'上传出错，错误原因 {e.__class__.__name__}: {e}，跳过 {filename}')
+                traceback.print_exc()
                 continue
             try:
                 await client.send_file(

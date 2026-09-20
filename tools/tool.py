@@ -16,6 +16,14 @@ from telethon.tl import types
 _chat_title_cache: dict[str, str] = {}
 
 
+class UserAbort(Exception):
+    """用户在下载/上传过程中主动中断。
+
+    在协程内直接调用 sys.exit() 会让 run_until_complete 抛出 SystemExit 并以退出码 0 结束，
+    无法与正常成功区分；改为抛本异常，由 main.py 统一以非 0 状态退出。
+    """
+
+
 def set_chat_alias(alias_map: dict[str, str]) -> None:
     """设置频道别名缓存（由 main.py 在启动时调用）。"""
     _chat_title_cache.update(alias_map)

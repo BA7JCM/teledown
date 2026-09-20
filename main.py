@@ -9,8 +9,13 @@ from telethon import TelegramClient
 from tools.down_file import down_group
 from tools.monit import start_monitor
 from tools.sign import batch_sign
-from tools.tool import run_hook, init_db, md5, print_all_channel, print_group, set_chat_alias
+from tools.tool import (run_hook, init_db, md5, print_all_channel, print_group, set_chat_alias,
+                        UserAbort)
 from tools.upload_file import upload_file
+
+# Telethon 默认为 60 秒：等待时间超过该值的 FLOOD_WAIT 会直接抛错，
+# 批量下载时会被当作普通异常跳过该文件。放大到 10 分钟以尽量等满服务端要求的间隔。
+FLOOD_SLEEP_THRESHOLD = 600
 
 
 def build_parser():
@@ -224,7 +229,8 @@ def main():
 
     # ================= 代理配置 =================
     proxy = prepare_proxy(args.proxy or config.get('proxy'))
-    client = TelegramClient(md5_token, api_id, api_hash, proxy=proxy)
+    client = TelegramClient(md5_token, api_id, api_hash, proxy=proxy,
+                            flood_sleep_threshold=FLOOD_SLEEP_THRESHOLD)
 
     # ================= 命令映射表 =================
     command_map = {
@@ -245,7 +251,11 @@ def main():
         # 根据参数执行对应功能，命令互斥，匹配第一个满足条件的执行
         handler = command_map.get(args.command)
         if handler:
-            client.loop.run_until_complete(handler(client, args))
+            try:
+                client.loop.run_until_complete(handler(client, args))
+            except UserAbort as e:
+                print(e)
+                sys.exit(1)
         else:
             print("未匹配任何操作类型，请检查参数")
 
